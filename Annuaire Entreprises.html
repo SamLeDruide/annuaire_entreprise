@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Annuaire Entreprises</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --border: #d8d4cc;
+    --border-dark: #a09890;
+    --text: #1a1714;
+    --text-muted: #6b6460;
+    --accent: #003189;
+    --accent-light: #e8ecf8;
+    --success: #0d6a3a;
+    --success-bg: #e8f5ee;
+    --error: #b91c1c;
+    --error-bg: #fef2f2;
+    --warning: #92400e;
+    --warning-bg: #fffbeb;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-flag {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .flag-stripe { width: 6px; height: 20px; border-radius: 1px; }
+  .flag-blue   { background: #002395; }
+  .flag-white  { background: #ffffff; border: 1px solid var(--border); }
+  .flag-red    { background: #ED2939; }
+  .header-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .header-sub {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--border-dark);
+    margin-top: 1px;
+  }
+
+  /* ── ENTITY CARD ── */
+  .entity-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .entity-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+  }
+  .entity-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    word-break: break-word;
+  }
+  .entity-name.empty {
+    color: var(--border-dark);
+    font-style: italic;
+    font-size: 13px;
+    font-weight: 300;
+  }
+
+  /* ── BUTTON ── */
+  .btn {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) { background: #002070; }
+  .btn-primary:disabled {
+    background: var(--border);
+    color: var(--border-dark);
+    cursor: not-allowed;
+  }
+  .btn-sm {
+    font-size: 11px;
+    padding: 5px 12px;
+  }
+
+  /* ── STATUS ── */
+  .status {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 3px;
+    font-size: 12px;
+    margin-bottom: 12px;
+    border-left: 3px solid transparent;
+  }
+  .status.visible { display: flex; }
+  .status.loading {
+    background: var(--accent-light);
+    border-left-color: var(--accent);
+    color: var(--accent);
+  }
+  .status.success {
+    background: var(--success-bg);
+    border-left-color: var(--success);
+    color: var(--success);
+  }
+  .status.error {
+    background: var(--error-bg);
+    border-left-color: var(--error);
+    color: var(--error);
+  }
+  .status.warning {
+    background: var(--warning-bg);
+    border-left-color: var(--warning);
+    color: var(--warning);
+  }
+  .spinner {
+    width: 12px; height: 12px;
+    border: 2px solid var(--accent-light);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── RESULTS ── */
+  .results-section {
+    display: none;
+  }
+  .results-section.visible { display: block; }
+
+  .results-header {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .result-option {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .result-option:hover { border-color: var(--accent); background: var(--accent-light); }
+  .result-option.selected { border-color: var(--accent); background: var(--accent-light); }
+
+  .result-info { flex: 1; min-width: 0; }
+  .result-nom {
+    font-weight: 500;
+    font-size: 13px;
+    margin-bottom: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .result-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .result-meta span { display: flex; gap: 4px; align-items: center; }
+  .meta-label { color: var(--border-dark); }
+
+  .result-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: var(--accent-light);
+    color: var(--accent);
+    flex-shrink: 0;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── DATA GRID ── */
+  .data-grid {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .data-row {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    border-bottom: 1px solid var(--border);
+  }
+  .data-row:last-child { border-bottom: none; }
+  .data-key {
+    padding: 8px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+  }
+  .data-val {
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    word-break: break-all;
+    display: flex;
+    align-items: center;
+  }
+  .data-val a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 10px;
+  }
+  .data-val a:hover { text-decoration: underline; }
+
+  .actions-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--border-dark);
+  }
+  .empty-icon { font-size: 28px; margin-bottom: 8px; }
+  .empty-text { font-size: 12px; line-height: 1.6; }
+
+  /* ── FOOTER ── */
+  .footer {
+    margin-top: 16px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--border-dark);
+    text-align: center;
+  }
+  .footer a { color: var(--border-dark); text-decoration: none; }
+  .footer a:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-flag">
+    <div class="flag-stripe flag-blue"></div>
+    <div class="flag-stripe flag-white"></div>
+    <div class="flag-stripe flag-red"></div>
+  </div>
+  <div>
+    <div class="header-title">Annuaire des Entreprises</div>
+    <div class="header-sub">data.gouv.fr · enrichissement automatique</div>
+  </div>
+</div>
+
+<!-- Entité sélectionnée -->
+<div class="entity-card">
+  <div style="min-width:0">
+    <div class="entity-label">Ligne sélectionnée — Entité</div>
+    <div class="entity-name empty" id="entityDisplay">Sélectionnez une ligne dans le tableau</div>
+  </div>
+  <button class="btn btn-primary" id="searchBtn" disabled onclick="lancerRecherche()">
+    Rechercher
+  </button>
+</div>
+
+<!-- Statut -->
+<div class="status" id="statusBox">
+  <div class="spinner" id="statusSpinner" style="display:none"></div>
+  <span id="statusMsg"></span>
+</div>
+
+<!-- Résultats multiples -->
+<div class="results-section" id="resultsSection">
+  <div class="results-header" id="resultsHeader">Résultats — choisissez l'entreprise</div>
+  <div id="resultsList"></div>
+</div>
+
+<!-- Données à appliquer -->
+<div class="results-section" id="dataSection">
+  <div class="results-header">Données à enregistrer</div>
+  <div class="data-grid">
+    <div class="data-row">
+      <div class="data-key">SIRET</div>
+      <div class="data-val" id="displaySIRET">—</div>
+    </div>
+    <div class="data-row">
+      <div class="data-key">SIREN</div>
+      <div class="data-val" id="displaySIREN">—</div>
+    </div>
+    <div class="data-row">
+      <div class="data-key">Lien</div>
+      <div class="data-val" id="displayLien">—</div>
+    </div>
+  </div>
+  <div class="actions-row">
+    <button class="btn btn-primary btn-sm" onclick="appliquerDonnees()">
+      ✓ Enregistrer dans Grist
+    </button>
+    <button class="btn btn-sm" style="background:var(--border);color:var(--text-muted)" onclick="annuler()">
+      Annuler
+    </button>
+  </div>
+</div>
+
+<!-- État vide initial -->
+<div class="empty-state" id="emptyState">
+  <div class="empty-icon">🏢</div>
+  <div class="empty-text">
+    Cliquez sur une ligne dont la colonne<br>
+    <strong>Entité</strong> contient un nom d'entreprise,<br>
+    puis cliquez sur <strong>Rechercher</strong>.
+  </div>
+</div>
+
+<div class="footer">
+  Données fournies par <a href="https://annuaire-entreprises.data.gouv.fr" target="_blank">annuaire-entreprises.data.gouv.fr</a>
+  · Licence Ouverte Etalab
+</div>
+
+<script>
+// ── ÉTAT ──────────────────────────────────────────────────────────────
+let currentRecord   = null;   // enregistrement Grist actif
+let selectedData    = null;   // données entreprise à appliquer
+let mappings        = null;   // mapping des colonnes Grist
+
+// ── INITIALISATION GRIST ──────────────────────────────────────────────
+grist.ready({
+  requiredAccess: 'full',
+  columns: [
+    { name: 'Entité', title: 'Entité',  type: 'Text',   optional: false },
+    { name: 'SIRET',  title: 'SIRET',   type: 'Text',   optional: false },
+    { name: 'SIREN',  title: 'SIREN',   type: 'Text',   optional: false },
+    { name: 'Lien',   title: 'Lien',    type: 'Text',   optional: false },
+  ],
+});
+
+// Écoute la ligne sélectionnée dans Grist
+grist.onRecord(function(record, maps) {
+  mappings = maps;
+  currentRecord = record;
+  resetUI();
+
+  // Retrouve la valeur "Entité" via le mapping ou directement
+  const entiteKey = maps?.Entité ?? 'Entité';
+  const nomEntite = record?.[entiteKey] || '';
+
+  const el = document.getElementById('entityDisplay');
+  const btn = document.getElementById('searchBtn');
+
+  if (nomEntite) {
+    el.textContent = nomEntite;
+    el.classList.remove('empty');
+    btn.disabled = false;
+  } else {
+    el.textContent = 'Colonne Entité vide sur cette ligne';
+    el.classList.add('empty');
+    btn.disabled = true;
+  }
+});
+
+// ── RECHERCHE ─────────────────────────────────────────────────────────
+async function lancerRecherche() {
+  const entiteKey = mappings?.Entité ?? 'Entité';
+  const nom = currentRecord?.[entiteKey];
+  if (!nom) return;
+
+  showStatus('loading', `Recherche de « ${nom} »…`);
+  hideSection('resultsSection');
+  hideSection('dataSection');
+  hide('emptyState');
+
+  try {
+    const url = `https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(nom)}&page=1&per_page=5`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    const results = data.results || [];
+    hideStatus();
+
+    if (results.length === 0) {
+      showStatus('warning', `Aucun résultat pour « ${nom} ». Vérifiez l'orthographe.`);
+      return;
+    }
+
+    if (results.length === 1) {
+      // Un seul résultat → affichage direct
+      afficherDonnees(construireDonnees(results[0]));
+    } else {
+      // Plusieurs résultats → liste de choix
+      afficherChoix(results);
+    }
+
+  } catch (err) {
+    showStatus('error', `Erreur lors de la recherche : ${err.message}`);
+  }
+}
+
+// ── CONSTRUCTION DES DONNÉES ──────────────────────────────────────────
+function construireDonnees(result) {
+  const siren = result.siren ?? '';
+  // Siège social en priorité, sinon premier établissement
+  const siege = result.siege ?? result.matching_etablissements?.[0] ?? {};
+  const siret = siege.siret ?? '';
+  const lien  = siren ? `https://annuaire-entreprises.data.gouv.fr/entreprise/${siren}` : '';
+
+  return {
+    nom:   result.nom_complet ?? result.nom_raison_sociale ?? '',
+    siret,
+    siren,
+    lien,
+    forme: result.nature_juridique_libelle ?? '',
+    adresse: siege.adresse ?? '',
+    etat:  result.etat_administratif === 'A' ? 'Active' : (result.etat_administratif ?? ''),
+  };
+}
+
+// ── AFFICHAGE DES CHOIX (résultats multiples) ─────────────────────────
+function afficherChoix(results) {
+  const section = document.getElementById('resultsSection');
+  const list    = document.getElementById('resultsList');
+  const header  = document.getElementById('resultsHeader');
+
+  header.textContent = `${results.length} résultats — choisissez l'entreprise`;
+  list.innerHTML = '';
+
+  results.forEach((r, i) => {
+    const d = construireDonnees(r);
+    const card = document.createElement('div');
+    card.className = 'result-option';
+    card.innerHTML = `
+      <div class="result-info">
+        <div class="result-nom">${escHtml(d.nom || '—')}</div>
+        <div class="result-meta">
+          <span><span class="meta-label">SIREN</span> ${escHtml(d.siren)}</span>
+          ${d.adresse ? `<span><span class="meta-label">Siège</span> ${escHtml(d.adresse)}</span>` : ''}
+          ${d.etat    ? `<span><span class="meta-label">État</span> ${escHtml(d.etat)}</span>` : ''}
+        </div>
+      </div>
+      ${d.etat === 'Active' ? '<div class="result-badge">ACTIVE</div>' : ''}
+    `;
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.result-option').forEach(el => el.classList.remove('selected'));
+      card.classList.add('selected');
+      afficherDonnees(d);
+    });
+    list.appendChild(card);
+  });
+
+  showSection('resultsSection');
+}
+
+// ── AFFICHAGE DES DONNÉES À ENREGISTRER ──────────────────────────────
+function afficherDonnees(d) {
+  selectedData = d;
+
+  document.getElementById('displaySIRET').textContent = d.siret || '—';
+  document.getElementById('displaySIREN').textContent = d.siren || '—';
+
+  const lienEl = document.getElementById('displayLien');
+  if (d.lien) {
+    lienEl.innerHTML = `<a href="${escHtml(d.lien)}" target="_blank">${escHtml(d.lien)}</a>`;
+  } else {
+    lienEl.textContent = '—';
+  }
+
+  showSection('dataSection');
+  hide('emptyState');
+}
+
+// ── ENREGISTREMENT DANS GRIST ─────────────────────────────────────────
+async function appliquerDonnees() {
+  if (!selectedData || !currentRecord) return;
+
+  const siretKey = mappings?.SIRET  ?? 'SIRET';
+  const sirenKey = mappings?.SIREN  ?? 'SIREN';
+  const lienKey  = mappings?.Lien   ?? 'Lien';
+
+  showStatus('loading', 'Enregistrement dans Grist…');
+
+  try {
+    await grist.selectedTable.update({
+      id:     currentRecord.id,
+      fields: {
+        [siretKey]: selectedData.siret,
+        [sirenKey]: selectedData.siren,
+        [lienKey]:  selectedData.lien,
+      },
+    });
+    showStatus('success', `✓ Données enregistrées pour « ${selectedData.nom} »`);
+    hideSection('dataSection');
+    hideSection('resultsSection');
+  } catch (err) {
+    showStatus('error', `Erreur lors de l'enregistrement : ${err.message}`);
+  }
+}
+
+// ── HELPERS UI ────────────────────────────────────────────────────────
+function showStatus(type, msg) {
+  const box = document.getElementById('statusBox');
+  const msgEl = document.getElementById('statusMsg');
+  const spinner = document.getElementById('statusSpinner');
+  box.className = `status visible ${type}`;
+  msgEl.textContent = msg;
+  spinner.style.display = type === 'loading' ? 'block' : 'none';
+}
+function hideStatus() {
+  document.getElementById('statusBox').className = 'status';
+}
+function showSection(id) { document.getElementById(id).classList.add('visible'); }
+function hideSection(id) { document.getElementById(id).classList.remove('visible'); }
+function hide(id)         { document.getElementById(id).style.display = 'none'; }
+function resetUI() {
+  hideStatus();
+  hideSection('resultsSection');
+  hideSection('dataSection');
+  selectedData = null;
+  document.getElementById('emptyState').style.display = '';
+}
+function annuler() {
+  hideSection('dataSection');
+  selectedData = null;
+}
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>
