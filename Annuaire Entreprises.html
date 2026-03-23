@@ -364,8 +364,8 @@
   <div id="resultsList"></div>
 </div>
 
-<!-- Données à appliquer -->
-<div class="results-section" id="dataSection">
+<!-- Données (masqué, enregistrement auto au clic) -->
+<div class="results-section" id="dataSection" style="display:none">
   <div class="results-header">Données à enregistrer</div>
   <div class="data-grid">
     <div class="data-row">
@@ -531,10 +531,11 @@ function afficherChoix(results) {
       </div>
       ${d.etat === 'Active' ? '<div class="result-badge">ACTIVE</div>' : ''}
     `;
-    card.addEventListener('click', () => {
+    card.addEventListener('click', async () => {
       document.querySelectorAll('.result-option').forEach(el => el.classList.remove('selected'));
       card.classList.add('selected');
       afficherDonnees(d);
+      await appliquerDonnees();
     });
     list.appendChild(card);
   });
