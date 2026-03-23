@@ -72,38 +72,52 @@
     margin-top: 1px;
   }
 
-  /* ── ENTITY CARD ── */
-  .entity-card {
+  /* ── SEARCH INPUT ── */
+  .search-wrap {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 12px 14px;
     margin-bottom: 12px;
+  }
+  .search-row {
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
   }
-  .entity-label {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 3px;
-  }
-  .entity-name {
-    font-size: 15px;
-    font-weight: 500;
+  .search-input {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 400;
+    width: 100%;
+    padding: 9px 36px 9px 11px;
+    border: 1.5px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
     color: var(--text);
-    word-break: break-word;
+    outline: none;
+    transition: border-color 0.15s;
   }
-  .entity-name.empty {
+  .search-input:focus { border-color: var(--accent); background: #fff; }
+  .search-input::placeholder { color: var(--border-dark); }
+  .search-spinner {
+    position: absolute;
+    right: 10px;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  .search-spinner.active { display: block; }
+  .search-hint {
+    font-size: 10px;
     color: var(--border-dark);
-    font-style: italic;
-    font-size: 13px;
-    font-weight: 300;
+    margin-top: 5px;
   }
+
+
 
   /* ── BUTTON ── */
   .btn {
@@ -321,15 +335,21 @@
   </div>
 </div>
 
-<!-- Entité sélectionnée -->
-<div class="entity-card">
-  <div style="min-width:0">
-    <div class="entity-label">Ligne sélectionnée — Entité</div>
-    <div class="entity-name empty" id="entityDisplay">Sélectionnez une ligne dans le tableau</div>
+<!-- Barre de recherche live -->
+<div class="search-wrap">
+  <div class="entity-label" style="margin-bottom:6px">Rechercher une entreprise</div>
+  <div class="search-row">
+    <input
+      type="text"
+      id="searchInput"
+      class="search-input"
+      placeholder="Tapez un nom d'entreprise…"
+      autocomplete="off"
+      oninput="onSearchInput()"
+    />
+    <div class="search-spinner" id="searchSpinner"></div>
   </div>
-  <button class="btn btn-primary" id="searchBtn" disabled onclick="lancerRecherche()">
-    Rechercher
-  </button>
+  <div class="search-hint" id="searchHint">Sélectionnez une ligne ou tapez directement</div>
 </div>
 
 <!-- Statut -->
@@ -371,15 +391,7 @@
   </div>
 </div>
 
-<!-- État vide initial -->
-<div class="empty-state" id="emptyState">
-  <div class="empty-icon">🏢</div>
-  <div class="empty-text">
-    Cliquez sur une ligne dont la colonne<br>
-    <strong>Entité</strong> contient un nom d'entreprise,<br>
-    puis cliquez sur <strong>Rechercher</strong>.
-  </div>
-</div>
+
 
 <div class="footer">
   Données fournies par <a href="https://annuaire-entreprises.data.gouv.fr" target="_blank">annuaire-entreprises.data.gouv.fr</a>
@@ -388,112 +400,123 @@
 
 <script>
 // ── ÉTAT ──────────────────────────────────────────────────────────────
-let currentRecord   = null;   // enregistrement Grist actif
-let selectedData    = null;   // données entreprise à appliquer
-let mappings        = null;   // mapping des colonnes Grist
+let currentRecord   = null;
+let selectedData    = null;
+let mappings        = null;
+let debounceTimer   = null;
+let lastQuery       = '';
 
 // ── INITIALISATION GRIST ──────────────────────────────────────────────
 grist.ready({
   requiredAccess: 'full',
   columns: [
-    { name: 'Entité', title: 'Entité',  type: 'Text',   optional: false },
-    { name: 'SIRET',  title: 'SIRET',   type: 'Text',   optional: false },
-    { name: 'SIREN',  title: 'SIREN',   type: 'Text',   optional: false },
-    { name: 'Lien',   title: 'Lien',    type: 'Text',   optional: false },
+    { name: 'Entité', title: 'Entité', type: 'Text', optional: false },
+    { name: 'SIRET',  title: 'SIRET',  type: 'Text', optional: false },
+    { name: 'SIREN',  title: 'SIREN',  type: 'Text', optional: false },
+    { name: 'Lien',   title: 'Lien',   type: 'Text', optional: false },
   ],
 });
 
-// Écoute la ligne sélectionnée dans Grist
+// Quand on change de ligne dans Grist → pré-remplit le champ de recherche
 grist.onRecord(function(record, maps) {
   mappings = maps;
   currentRecord = record;
-  resetUI();
 
-  // Retrouve la valeur "Entité" via le mapping ou directement
   const entiteKey = maps?.Entité ?? 'Entité';
   const nomEntite = record?.[entiteKey] || '';
 
-  const el = document.getElementById('entityDisplay');
-  const btn = document.getElementById('searchBtn');
+  const input = document.getElementById('searchInput');
 
-  if (nomEntite) {
-    el.textContent = nomEntite;
-    el.classList.remove('empty');
-    btn.disabled = false;
-  } else {
-    el.textContent = 'Colonne Entité vide sur cette ligne';
-    el.classList.add('empty');
-    btn.disabled = true;
+  if (nomEntite && nomEntite !== lastQuery) {
+    input.value = nomEntite;
+    setHint(`Ligne : ${nomEntite}`);
+    lancerRechercheDebounce(nomEntite);
   }
 });
 
-// ── RECHERCHE ─────────────────────────────────────────────────────────
-async function lancerRecherche() {
-  const entiteKey = mappings?.Entité ?? 'Entité';
-  const nom = currentRecord?.[entiteKey];
-  if (!nom) return;
+// ── DEBOUNCE INPUT ────────────────────────────────────────────────────
+function onSearchInput() {
+  const q = document.getElementById('searchInput').value.trim();
+  clearTimeout(debounceTimer);
 
-  showStatus('loading', `Recherche de « ${nom} »…`);
+  if (q.length < 2) {
+    hideSection('resultsSection');
+    hideSection('dataSection');
+    hideStatus();
+    setHint('Tapez au moins 2 caractères…');
+    return;
+  }
+
+  setHint('Recherche en cours…');
+  showSpinner(true);
+  debounceTimer = setTimeout(() => lancerRecherche(q), 400);
+}
+
+function lancerRechercheDebounce(q) {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => lancerRecherche(q), 400);
+}
+
+// ── RECHERCHE ─────────────────────────────────────────────────────────
+async function lancerRecherche(q) {
+  if (!q || q === lastQuery) { showSpinner(false); return; }
+  lastQuery = q;
+
   hideSection('resultsSection');
   hideSection('dataSection');
-  hide('emptyState');
+  hideStatus();
+  showSpinner(true);
 
   try {
-    const url = `https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(nom)}&page=1&per_page=5`;
+    const url = `https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(q)}&page=1&per_page=5`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-
     const results = data.results || [];
-    hideStatus();
+
+    showSpinner(false);
 
     if (results.length === 0) {
-      showStatus('warning', `Aucun résultat pour « ${nom} ». Vérifiez l'orthographe.`);
+      setHint(`Aucun résultat pour « ${q} »`);
       return;
     }
 
     if (results.length === 1) {
-      // Un seul résultat → affichage direct
+      setHint('1 résultat trouvé');
       afficherDonnees(construireDonnees(results[0]));
     } else {
-      // Plusieurs résultats → liste de choix
+      setHint(`${results.length} résultats — choisissez l'entreprise`);
       afficherChoix(results);
     }
 
   } catch (err) {
-    showStatus('error', `Erreur lors de la recherche : ${err.message}`);
+    showSpinner(false);
+    showStatus('error', `Erreur : ${err.message}`);
   }
 }
 
 // ── CONSTRUCTION DES DONNÉES ──────────────────────────────────────────
 function construireDonnees(result) {
   const siren = result.siren ?? '';
-  // Siège social en priorité, sinon premier établissement
   const siege = result.siege ?? result.matching_etablissements?.[0] ?? {};
   const siret = siege.siret ?? '';
   const lien  = siren ? `https://annuaire-entreprises.data.gouv.fr/entreprise/${siren}` : '';
-
   return {
-    nom:   result.nom_complet ?? result.nom_raison_sociale ?? '',
-    siret,
-    siren,
-    lien,
-    forme: result.nature_juridique_libelle ?? '',
+    nom:     result.nom_complet ?? result.nom_raison_sociale ?? '',
+    siret, siren, lien,
     adresse: siege.adresse ?? '',
-    etat:  result.etat_administratif === 'A' ? 'Active' : (result.etat_administratif ?? ''),
+    etat:    result.etat_administratif === 'A' ? 'Active' : (result.etat_administratif ?? ''),
   };
 }
 
-// ── AFFICHAGE DES CHOIX (résultats multiples) ─────────────────────────
+// ── AFFICHAGE DES CHOIX ───────────────────────────────────────────────
 function afficherChoix(results) {
-  const section = document.getElementById('resultsSection');
-  const list    = document.getElementById('resultsList');
-  const header  = document.getElementById('resultsHeader');
-
+  const list = document.getElementById('resultsList');
+  const header = document.getElementById('resultsHeader');
   header.textContent = `${results.length} résultats — choisissez l'entreprise`;
   list.innerHTML = '';
 
-  results.forEach((r, i) => {
+  results.forEach(r => {
     const d = construireDonnees(r);
     const card = document.createElement('div');
     card.className = 'result-option';
@@ -519,48 +542,48 @@ function afficherChoix(results) {
   showSection('resultsSection');
 }
 
-// ── AFFICHAGE DES DONNÉES À ENREGISTRER ──────────────────────────────
+// ── AFFICHAGE DES DONNÉES ─────────────────────────────────────────────
 function afficherDonnees(d) {
   selectedData = d;
-
   document.getElementById('displaySIRET').textContent = d.siret || '—';
   document.getElementById('displaySIREN').textContent = d.siren || '—';
-
   const lienEl = document.getElementById('displayLien');
   if (d.lien) {
     lienEl.innerHTML = `<a href="${escHtml(d.lien)}" target="_blank">${escHtml(d.lien)}</a>`;
   } else {
     lienEl.textContent = '—';
   }
-
   showSection('dataSection');
-  hide('emptyState');
 }
 
 // ── ENREGISTREMENT DANS GRIST ─────────────────────────────────────────
 async function appliquerDonnees() {
   if (!selectedData || !currentRecord) return;
 
-  const siretKey = mappings?.SIRET  ?? 'SIRET';
-  const sirenKey = mappings?.SIREN  ?? 'SIREN';
-  const lienKey  = mappings?.Lien   ?? 'Lien';
+  const siretKey = mappings?.SIRET ?? 'SIRET';
+  const sirenKey = mappings?.SIREN ?? 'SIREN';
+  const lienKey  = mappings?.Lien  ?? 'Lien';
+  const entiteKey = mappings?.Entité ?? 'Entité';
 
   showStatus('loading', 'Enregistrement dans Grist…');
 
   try {
     await grist.selectedTable.update({
-      id:     currentRecord.id,
+      id: currentRecord.id,
       fields: {
-        [siretKey]: selectedData.siret,
-        [sirenKey]: selectedData.siren,
-        [lienKey]:  selectedData.lien,
+        [entiteKey]: selectedData.nom,
+        [siretKey]:  selectedData.siret,
+        [sirenKey]:  selectedData.siren,
+        [lienKey]:   selectedData.lien,
       },
     });
-    showStatus('success', `✓ Données enregistrées pour « ${selectedData.nom} »`);
+    showStatus('success', `✓ Enregistré — ${selectedData.nom}`);
     hideSection('dataSection');
     hideSection('resultsSection');
+    lastQuery = selectedData.nom;
+    setHint(`✓ ${selectedData.nom}`);
   } catch (err) {
-    showStatus('error', `Erreur lors de l'enregistrement : ${err.message}`);
+    showStatus('error', `Erreur : ${err.message}`);
   }
 }
 
@@ -573,18 +596,14 @@ function showStatus(type, msg) {
   msgEl.textContent = msg;
   spinner.style.display = type === 'loading' ? 'block' : 'none';
 }
-function hideStatus() {
-  document.getElementById('statusBox').className = 'status';
-}
+function hideStatus() { document.getElementById('statusBox').className = 'status'; }
 function showSection(id) { document.getElementById(id).classList.add('visible'); }
 function hideSection(id) { document.getElementById(id).classList.remove('visible'); }
-function hide(id)         { document.getElementById(id).style.display = 'none'; }
-function resetUI() {
-  hideStatus();
-  hideSection('resultsSection');
-  hideSection('dataSection');
-  selectedData = null;
-  document.getElementById('emptyState').style.display = '';
+function showSpinner(on) {
+  document.getElementById('searchSpinner').classList.toggle('active', on);
+}
+function setHint(txt) {
+  document.getElementById('searchHint').textContent = txt;
 }
 function annuler() {
   hideSection('dataSection');
@@ -592,10 +611,8 @@ function annuler() {
 }
 function escHtml(str) {
   return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 </script>
 </body>
